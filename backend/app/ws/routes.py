@@ -148,17 +148,8 @@ async def _submit_line(
         await websocket.send_json({"type": "error", "detail": "not your line"})
         return
 
-    contributions = {
-        (c.row, c.col): c.letter
-        for c in (
-            await session.execute(
-                select(CellContribution).where(CellContribution.line_id == line_id)
-            )
-        ).scalars().all()
-    }
-    submitted = "".join(contributions.get(cell, "") for cell in line.cells())
-    is_correct = submitted == line.answer
-
+    # Submission just marks the line as attempted/done for the day — correctness is
+    # never checked or reported back, matching the "no right/wrong indicators" design.
     assignment = (
         await session.execute(
             select(LineAssignment).where(
@@ -167,10 +158,9 @@ async def _submit_line(
             )
         )
     ).scalar_one_or_none()
-    if assignment is not None and is_correct:
+    if assignment is not None:
         assignment.completed = True
         await session.commit()
 
-    await websocket.send_json({"type": "submit_result", "line_id": line_id, "correct": is_correct})
-    if is_correct:
-        await manager.broadcast(puzzle_id, {"type": "line_completed", "line_id": line_id})
+    await manager.broadcast(puzzle_id, {"type": "line_completed", "line_id": line_id})
+

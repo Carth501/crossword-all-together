@@ -52,7 +52,7 @@ export function PuzzleGrid() {
             disabled={myLine.completed}
             onClick={() => submitLine(myLine.id)}
           >
-            {myLine.completed ? "Solved!" : "Submit answer"}
+            {myLine.completed ? "Submitted" : "Submit answer"}
           </button>
         </div>
       )}
