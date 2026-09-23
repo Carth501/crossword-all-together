@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
 import { usePuzzleStore } from "@/lib/puzzleStore";
+import { useEffect, useRef } from "react";
 
 /** Connects to the puzzle room, feeding incoming messages into the Zustand store,
  * and reconnects with backoff on drop (per-day line assignment is server-side/permanent,
@@ -7,7 +7,7 @@ import { usePuzzleStore } from "@/lib/puzzleStore";
 export function usePuzzleSocket() {
   const applyStateSync = usePuzzleStore((s) => s.applyStateSync);
   const applyCellUpdate = usePuzzleStore((s) => s.applyCellUpdate);
-  const markLineCompleted = usePuzzleStore((s) => s.markLineCompleted);
+  const markLineCompleted = usePuzzleStore((s) => s.setLineCompleted);
   const setSpectator = usePuzzleStore((s) => s.setSpectator);
   const socketRef = useRef<WebSocket | null>(null);
 
@@ -35,8 +35,8 @@ export function usePuzzleSocket() {
           case "cell_update":
             applyCellUpdate(message.row, message.col, message.contributions);
             break;
-          case "line_completed":
-            markLineCompleted(message.line_id);
+          case "line_status":
+            markLineCompleted(message.line_id, message.completed);
             break;
           case "room_full":
             setSpectator(true);
@@ -61,12 +61,27 @@ export function usePuzzleSocket() {
     };
   }, [applyStateSync, applyCellUpdate, markLineCompleted, setSpectator]);
 
-  const submitLetter = (lineId: number, row: number, col: number, letter: string) => {
-    socketRef.current?.send(JSON.stringify({ type: "submit_letter", line_id: lineId, row, col, letter }));
+  const submitLetter = (
+    lineId: number,
+    row: number,
+    col: number,
+    letter: string,
+  ) => {
+    socketRef.current?.send(
+      JSON.stringify({
+        type: "submit_letter",
+        line_id: lineId,
+        row,
+        col,
+        letter,
+      }),
+    );
   };
 
   const submitLine = (lineId: number) => {
-    socketRef.current?.send(JSON.stringify({ type: "submit_line", line_id: lineId }));
+    socketRef.current?.send(
+      JSON.stringify({ type: "submit_line", line_id: lineId }),
+    );
   };
 
   return { submitLetter, submitLine };

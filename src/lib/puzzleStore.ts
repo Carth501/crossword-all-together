@@ -41,8 +41,12 @@ interface PuzzleState {
     my_line_id: number | null;
     cells: { row: number; col: number; contributions: CellContribution[] }[];
   }) => void;
-  applyCellUpdate: (row: number, col: number, contributions: CellContribution[]) => void;
-  markLineCompleted: (lineId: number) => void;
+  applyCellUpdate: (
+    row: number,
+    col: number,
+    contributions: CellContribution[],
+  ) => void;
+  setLineCompleted: (lineId: number, completed: boolean) => void;
   setSpectator: (value: boolean) => void;
 }
 
@@ -74,9 +78,11 @@ export const usePuzzleStore = create<PuzzleState>((set) => ({
       cells: { ...state.cells, [cellKey(row, col)]: contributions },
     })),
 
-  markLineCompleted: (lineId) =>
+  setLineCompleted: (lineId, completed) =>
     set((state) => ({
-      lines: state.lines.map((line) => (line.id === lineId ? { ...line, completed: true } : line)),
+      lines: state.lines.map((line) =>
+        line.id === lineId ? { ...line, completed } : line,
+      ),
     })),
 
   setSpectator: (value) => set({ isSpectator: value }),

@@ -117,6 +117,14 @@ async def _submit_letter(
         session.add(existing)
     else:
         existing.letter = letter
+
+    # Editing a letter after submission means the answer is being revised, so reopen it.
+    assignment = (
+        await session.execute(select(LineAssignment).where(LineAssignment.line_id == line_id))
+    ).scalar_one_or_none()
+    reopened = assignment is not None and assignment.completed
+    if reopened:
+        assignment.completed = False
     await session.commit()
 
     contributions = (
@@ -137,6 +145,8 @@ async def _submit_letter(
             "contributions": [{"line_id": c.line_id, "letter": c.letter} for c in contributions],
         },
     )
+    if reopened:
+        await manager.broadcast(puzzle_id, {"type": "line_status", "line_id": line_id, "completed": False})
 
 
 async def _submit_line(
@@ -162,5 +172,5 @@ async def _submit_line(
         assignment.completed = True
         await session.commit()
 
-    await manager.broadcast(puzzle_id, {"type": "line_completed", "line_id": line_id})
+    await manager.broadcast(puzzle_id, {"type": "line_status", "line_id": line_id, "completed": True})
 
