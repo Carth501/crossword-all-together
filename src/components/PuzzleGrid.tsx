@@ -1,8 +1,8 @@
-import { useMemo } from "react";
-import { cellKey, usePuzzleStore } from "@/lib/puzzleStore";
-import { lineCells } from "@/lib/gridGeometry";
 import { usePuzzleSocket } from "@/hooks/usePuzzleSocket";
+import { lineCells } from "@/lib/gridGeometry";
+import { cellKey, usePuzzleStore } from "@/lib/puzzleStore";
 import { cn } from "@/lib/utils";
+import { useMemo, useRef } from "react";
 
 export function PuzzleGrid() {
   const puzzle = usePuzzleStore((s) => s.puzzle);
@@ -10,8 +10,18 @@ export function PuzzleGrid() {
   const myLineId = usePuzzleStore((s) => s.myLineId);
   const cells = usePuzzleStore((s) => s.cells);
   const { submitLetter, submitLine } = usePuzzleSocket();
+  const inputRefs = useRef(new Map<string, HTMLInputElement>());
 
-  const myLine = useMemo(() => lines.find((l) => l.id === myLineId) ?? null, [lines, myLineId]);
+  const myLine = useMemo(
+    () => lines.find((l) => l.id === myLineId) ?? null,
+    [lines, myLineId],
+  );
+
+  // Ordered cell keys along the player's own line, used to jump focus forward on input.
+  const myOrderedCellKeys = useMemo(() => {
+    if (!myLine) return [];
+    return lineCells(myLine).map(([r, c]) => cellKey(r, c));
+  }, [myLine]);
 
   // Map each (row,col) -> the numbered clue that starts there (for corner labels).
   const numberByCell = useMemo(() => {
@@ -49,7 +59,9 @@ export function PuzzleGrid() {
 
       <div
         className="grid gap-px bg-border p-px"
-        style={{ gridTemplateColumns: `repeat(${puzzle.size}, minmax(0, 2rem))` }}
+        style={{
+          gridTemplateColumns: `repeat(${puzzle.size}, minmax(0, 2rem))`,
+        }}
       >
         {puzzle.blocked_cells.map((rowArr, r) =>
           rowArr.map((blocked, c) => {
@@ -69,7 +81,7 @@ export function PuzzleGrid() {
                 key={key}
                 className={cn(
                   "relative size-8 bg-background text-center",
-                  !isMine && "opacity-50"
+                  !isMine && "opacity-50",
                 )}
               >
                 {number && (
@@ -79,9 +91,32 @@ export function PuzzleGrid() {
                 )}
                 {isMine ? (
                   <input
+                    ref={(el) => {
+                      if (el) inputRefs.current.set(key, el);
+                      else inputRefs.current.delete(key);
+                    }}
                     maxLength={1}
-                    value={contributions.find((c) => c.line_id === myLine!.id)?.letter ?? ""}
-                    onChange={(e) => submitLetter(myLine!.id, r, c, e.target.value)}
+                    value={
+                      contributions.find((c) => c.line_id === myLine!.id)
+                        ?.letter ?? ""
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key !== "Backspace" || e.currentTarget.value)
+                        return;
+                      // Cell already empty: hop back and let the user delete from there.
+                      const idx = myOrderedCellKeys.indexOf(key);
+                      const prevKey = myOrderedCellKeys[idx - 1];
+                      if (prevKey) inputRefs.current.get(prevKey)?.focus();
+                    }}
+                    onChange={(e) => {
+                      const letter = e.target.value;
+                      submitLetter(myLine!.id, r, c, letter);
+                      if (letter) {
+                        const idx = myOrderedCellKeys.indexOf(key);
+                        const nextKey = myOrderedCellKeys[idx + 1];
+                        if (nextKey) inputRefs.current.get(nextKey)?.focus();
+                      }
+                    }}
                     className="size-8 bg-(--cell-owned) text-center uppercase outline-none"
                   />
                 ) : hasConflict ? (
@@ -95,7 +130,7 @@ export function PuzzleGrid() {
                 )}
               </div>
             );
-          })
+          }),
         )}
       </div>
     </div>
