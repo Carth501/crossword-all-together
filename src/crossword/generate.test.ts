@@ -58,9 +58,6 @@ describe("generateCrossword", () => {
     const result = generateCrossword(
       [clue("ABC"), clue("XQA"), clue("ABZ"), clue("XYZ")],
       11,
-      {
-        targetEntries: 4,
-      },
     );
 
     expect(result.ok).toBe(true);
@@ -83,7 +80,6 @@ describe("generateCrossword", () => {
       {
         rows: 5,
         cols: 7,
-        targetEntries: 4,
       },
     );
 
@@ -99,7 +95,6 @@ describe("generateCrossword", () => {
     const result = generateCrossword([clue("XXXXXAXXXX"), clue("ABC")], 11, {
       rows: 12,
       cols: 12,
-      targetEntries: 2,
     });
 
     expect(result.ok).toBe(true);
@@ -116,7 +111,7 @@ describe("generateCrossword", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.puzzle.entries).toHaveLength(7);
+    expect(result.puzzle.entries.length).toBeGreaterThan(7);
     expect(
       result.puzzle.entries.filter(({ direction }) => direction === "across")
         .length,
@@ -140,8 +135,8 @@ describe("generateCrossword", () => {
 
   it("returns the same crossing grid for the same seed", () => {
     const records = [clue("CATS"), clue("ANTS")];
-    const first = generateCrossword(records, 17, { targetEntries: 2 });
-    const second = generateCrossword(records, 17, { targetEntries: 2 });
+    const first = generateCrossword(records, 17);
+    const second = generateCrossword(records, 17);
 
     expect(first).toEqual(second);
     expect(first.ok).toBe(true);
@@ -156,7 +151,6 @@ describe("generateCrossword", () => {
 
   it("returns the best balanced layout found within the node limit", () => {
     const result = generateCrossword([clue("CATS"), clue("ANTS")], 17, {
-      targetEntries: 3,
       nodeLimit: 1,
     });
 
@@ -178,5 +172,13 @@ describe("generateCrossword", () => {
       ok: false,
       reason: "Not enough usable clues to build a crossword.",
     });
+  });
+
+  it("returns a single usable line when no clues can cross", () => {
+    const result = generateCrossword([clue("CAT")], 17);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.puzzle.entries).toHaveLength(1);
   });
 });

@@ -28,12 +28,10 @@ interface Placement {
 
 interface GeneratorOptions extends Partial<GridDimensions> {
   size?: number;
-  targetEntries?: number;
   nodeLimit?: number;
 }
 
 const DEFAULT_SIZE = 9;
-const DEFAULT_TARGET = 7;
 const DEFAULT_NODE_LIMIT = 12000;
 
 export function normalizeClues(
@@ -72,20 +70,17 @@ export function generateCrossword(
 ): GenerationResult {
   const rows = options.rows ?? options.size ?? DEFAULT_SIZE;
   const cols = options.cols ?? options.size ?? DEFAULT_SIZE;
-  const targetEntries = options.targetEntries ?? DEFAULT_TARGET;
   const nodeLimit = options.nodeLimit ?? DEFAULT_NODE_LIMIT;
   const clues = normalizeClues(records, Math.max(rows, cols)).filter(
     ({ answer }) => answer.length <= Math.max(rows, cols),
   );
-  const minimumPerDirection = Math.floor(targetEntries / 2);
 
   if (
     !Number.isInteger(rows) ||
     !Number.isInteger(cols) ||
     rows < 3 ||
     cols < 3 ||
-    targetEntries < 2 ||
-    clues.length < minimumPerDirection * 2
+    clues.length === 0
   ) {
     return {
       ok: false,
@@ -96,23 +91,31 @@ export function generateCrossword(
   const normalizedSeed = seed >>> 0;
   const random = createRandom(normalizedSeed || 0x9e3779b9);
   const candidates = shuffle(clues, random);
-  const longestCandidates = [...candidates].sort(
-    (left, right) => right.answer.length - left.answer.length,
-  );
   let visited = 0;
-  let searchLimit = nodeLimit;
+  let searchLimit = Math.min(
+    nodeLimit,
+    Math.max(1, Math.floor(nodeLimit / 64)),
+  );
   let bestPlacements: Placement[] | null = null;
   let bestCellCount = 0;
 
   for (const firstClue of candidates) {
     if (visited >= searchLimit) break;
-    if (firstClue.answer.length > cols) continue;
+    const firstDirection: Direction =
+      firstClue.answer.length <= cols ? "across" : "down";
+    if (firstDirection === "down" && firstClue.answer.length > rows) continue;
 
     const firstPlacement: Placement = {
       clue: firstClue,
-      direction: "across",
-      row: Math.floor(rows / 2),
-      col: Math.floor((cols - firstClue.answer.length) / 2),
+      direction: firstDirection,
+      row:
+        firstDirection === "down"
+          ? Math.floor((rows - firstClue.answer.length) / 2)
+          : Math.floor(rows / 2),
+      col:
+        firstDirection === "across"
+          ? Math.floor((cols - firstClue.answer.length) / 2)
+          : Math.floor(cols / 2),
     };
     const board = createBoard(rows, cols);
     placeOnBoard(board, firstPlacement);
@@ -127,48 +130,28 @@ export function generateCrossword(
         ({ direction }) => direction === "across",
       ).length;
       const downCount = placements.length - acrossCount;
-      if (
-        acrossCount >= minimumPerDirection &&
-        downCount >= minimumPerDirection
-      ) {
+      if (placements.length > 0) {
         if (
           bestPlacements === null ||
           placements.length > bestPlacements.length ||
           (placements.length === bestPlacements.length &&
             currentCellCount > bestCellCount)
         ) {
+          const improvedEntryCount =
+            bestPlacements === null ||
+            placements.length > bestPlacements.length;
           bestPlacements = [...placements];
           bestCellCount = currentCellCount;
-          if (
-            placements.length === targetEntries &&
-            searchLimit === nodeLimit
-          ) {
+          if (improvedEntryCount) {
             searchLimit = Math.min(
               nodeLimit,
-              visited + Math.max(1, Math.floor(nodeLimit / 8)),
+              visited + Math.max(1, Math.floor(nodeLimit / 64)),
             );
           }
         }
       }
 
-      if (placements.length >= targetEntries || visited >= searchLimit) return;
-      if (bestPlacements !== null && bestPlacements.length === targetEntries) {
-        const neededEntries = targetEntries - placements.length;
-        let possibleAdditionalCells = 0;
-        let availableEntries = 0;
-        for (const candidate of longestCandidates) {
-          if (used.has(candidate.id)) continue;
-          possibleAdditionalCells += candidate.answer.length - 1;
-          availableEntries += 1;
-          if (availableEntries === neededEntries) break;
-        }
-        if (
-          availableEntries < neededEntries ||
-          currentCellCount + possibleAdditionalCells <= bestCellCount
-        ) {
-          return;
-        }
-      }
+      if (placements.length >= clues.length || visited >= searchLimit) return;
 
       const firstDirection: Direction =
         acrossCount > downCount ? "down" : "across";
@@ -227,6 +210,30 @@ export function generateCrossword(
     search(board, firstClue.answer.length);
   }
 
+  if (bestPlacements === null) {
+    const firstClue = candidates.find(
+      ({ answer }) => answer.length <= cols || answer.length <= rows,
+    );
+    if (firstClue) {
+      const direction: Direction =
+        firstClue.answer.length <= cols ? "across" : "down";
+      bestPlacements = [
+        {
+          clue: firstClue,
+          direction,
+          row:
+            direction === "down"
+              ? Math.floor((rows - firstClue.answer.length) / 2)
+              : Math.floor(rows / 2),
+          col:
+            direction === "across"
+              ? Math.floor((cols - firstClue.answer.length) / 2)
+              : Math.floor(cols / 2),
+        },
+      ];
+    }
+  }
+
   if (bestPlacements !== null) {
     return {
       ok: true,
@@ -236,7 +243,7 @@ export function generateCrossword(
 
   return {
     ok: false,
-    reason: `Could not fit enough crossing clues into a ${rows}×${cols} grid.`,
+    reason: `No usable clues fit in a ${rows}×${cols} grid.`,
   };
 }
 
