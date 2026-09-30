@@ -71,6 +71,9 @@ describe("generateCrossword", () => {
     expect(
       result.puzzle.entries.filter(({ direction }) => direction === "down"),
     ).toHaveLength(2);
+    expect(
+      result.puzzle.cells.flat().filter(({ solution }) => solution !== null),
+    ).toHaveLength(9);
   });
 
   it("builds a playable puzzle from the bundled clue sample", () => {
@@ -114,6 +117,23 @@ describe("generateCrossword", () => {
     expect(
       first.puzzle.cells.flat().filter(({ solution }) => solution !== null),
     ).toHaveLength(7);
+  });
+
+  it("returns the best balanced layout found within the node limit", () => {
+    const result = generateCrossword([clue("CATS"), clue("ANTS")], 17, {
+      targetEntries: 3,
+      nodeLimit: 1,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.puzzle.entries).toHaveLength(2);
+    expect(
+      result.puzzle.entries.some(({ direction }) => direction === "across"),
+    ).toBe(true);
+    expect(
+      result.puzzle.entries.some(({ direction }) => direction === "down"),
+    ).toBe(true);
   });
 
   it("returns a bounded failure for an unusable sample", () => {

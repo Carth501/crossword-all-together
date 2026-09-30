@@ -72,8 +72,13 @@ export function generateCrossword(
   const clues = normalizeClues(records).filter(
     ({ answer }) => answer.length <= size,
   );
+  const minimumPerDirection = Math.floor(targetEntries / 2);
 
-  if (size < 3 || targetEntries < 2 || clues.length < targetEntries) {
+  if (
+    size < 3 ||
+    targetEntries < 2 ||
+    clues.length < minimumPerDirection * 2
+  ) {
     return {
       ok: false,
       reason: "Not enough usable clues to build a crossword.",
@@ -83,11 +88,16 @@ export function generateCrossword(
   const normalizedSeed = seed >>> 0;
   const random = createRandom(normalizedSeed || 0x9e3779b9);
   const candidates = shuffle(clues, random);
-  const minimumPerDirection = Math.floor(targetEntries / 2);
+  const longestCandidates = [...candidates].sort(
+    (left, right) => right.answer.length - left.answer.length,
+  );
   let visited = 0;
+  let searchLimit = nodeLimit;
+  let bestPlacements: Placement[] | null = null;
+  let bestCellCount = 0;
 
   for (const firstClue of candidates) {
-    if (visited >= nodeLimit) break;
+    if (visited >= searchLimit) break;
 
     const firstPlacement: Placement = {
       clue: firstClue,
@@ -100,21 +110,57 @@ export function generateCrossword(
 
     const placements = [firstPlacement];
     const used = new Set([firstClue.id]);
-    const search = (currentBoard: BoardCell[][]): boolean => {
-      if (placements.length === targetEntries) {
-        const acrossCount = placements.filter(
-          ({ direction }) => direction === "across",
-        ).length;
-        const downCount = placements.length - acrossCount;
-        return (
-          acrossCount >= minimumPerDirection && downCount >= minimumPerDirection
-        );
-      }
-
+    const search = (
+      currentBoard: BoardCell[][],
+      currentCellCount: number,
+    ): void => {
       const acrossCount = placements.filter(
         ({ direction }) => direction === "across",
       ).length;
       const downCount = placements.length - acrossCount;
+      if (
+        acrossCount >= minimumPerDirection &&
+        downCount >= minimumPerDirection
+      ) {
+        if (
+          bestPlacements === null ||
+          placements.length > bestPlacements.length ||
+          (placements.length === bestPlacements.length &&
+            currentCellCount > bestCellCount)
+        ) {
+          bestPlacements = [...placements];
+          bestCellCount = currentCellCount;
+          if (placements.length === targetEntries && searchLimit === nodeLimit) {
+            searchLimit = Math.min(
+              nodeLimit,
+              visited + Math.max(1, Math.floor(nodeLimit / 8)),
+            );
+          }
+        }
+      }
+
+      if (placements.length >= targetEntries || visited >= searchLimit) return;
+      if (
+        bestPlacements !== null &&
+        bestPlacements.length === targetEntries
+      ) {
+        const neededEntries = targetEntries - placements.length;
+        let possibleAdditionalCells = 0;
+        let availableEntries = 0;
+        for (const candidate of longestCandidates) {
+          if (used.has(candidate.id)) continue;
+          possibleAdditionalCells += candidate.answer.length - 1;
+          availableEntries += 1;
+          if (availableEntries === neededEntries) break;
+        }
+        if (
+          availableEntries < neededEntries ||
+          currentCellCount + possibleAdditionalCells <= bestCellCount
+        ) {
+          return;
+        }
+      }
+
       const firstDirection: Direction =
         acrossCount > downCount ? "down" : "across";
       const directions: Direction[] = [
@@ -134,31 +180,43 @@ export function generateCrossword(
         }
 
         for (const placement of possible) {
+          if (visited >= searchLimit) return;
           visited += 1;
-          if (visited > nodeLimit) return false;
 
           const nextBoard = cloneBoard(currentBoard);
+          let addedCellCount = 0;
+          const rowStep = placement.direction === "down" ? 1 : 0;
+          const colStep = placement.direction === "across" ? 1 : 0;
+          for (let index = 0; index < placement.clue.answer.length; index += 1) {
+            if (
+              currentBoard[placement.row + rowStep * index][
+                placement.col + colStep * index
+              ].letter === null
+            ) {
+              addedCellCount += 1;
+            }
+          }
           placeOnBoard(nextBoard, placement);
           placements.push(placement);
           used.add(placement.clue.id);
 
-          if (search(nextBoard)) return true;
+          search(nextBoard, currentCellCount + addedCellCount);
 
           placements.pop();
           used.delete(placement.clue.id);
-          if (visited >= nodeLimit) return false;
+          if (visited >= searchLimit) return;
         }
       }
-
-      return false;
     };
 
-    if (search(board)) {
-      return {
-        ok: true,
-        puzzle: buildPuzzle(size, normalizedSeed, placements),
-      };
-    }
+    search(board, firstClue.answer.length);
+  }
+
+  if (bestPlacements !== null) {
+    return {
+      ok: true,
+      puzzle: buildPuzzle(size, normalizedSeed, bestPlacements),
+    };
   }
 
   return {
