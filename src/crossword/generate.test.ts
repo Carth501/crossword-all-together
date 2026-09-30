@@ -76,6 +76,41 @@ describe("generateCrossword", () => {
     ).toHaveLength(9);
   });
 
+  it("generates a rectangular grid with the requested dimensions", () => {
+    const result = generateCrossword(
+      [clue("ABC"), clue("XQA"), clue("ABZ"), clue("XYZ")],
+      11,
+      {
+        rows: 5,
+        cols: 7,
+        targetEntries: 4,
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.puzzle.rows).toBe(5);
+    expect(result.puzzle.cols).toBe(7);
+    expect(result.puzzle.cells).toHaveLength(5);
+    expect(result.puzzle.cells.every((row) => row.length === 7)).toBe(true);
+  });
+
+  it("supports answers longer than nine cells on larger grids", () => {
+    const result = generateCrossword([clue("XXXXXAXXXX"), clue("ABC")], 11, {
+      rows: 12,
+      cols: 12,
+      targetEntries: 2,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.puzzle.rows).toBe(12);
+    expect(result.puzzle.cols).toBe(12);
+    expect(
+      result.puzzle.entries.some(({ answer }) => answer.length === 10),
+    ).toBe(true);
+  });
+
   it("builds a playable puzzle from the bundled clue sample", () => {
     const result = generateCrossword(clueRecords, 2026);
 

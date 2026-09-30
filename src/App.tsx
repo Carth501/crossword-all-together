@@ -1,8 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import "./crossword/crossword.css";
 import { useCrosswordStore } from "./store/crossword-store";
 
+const DEFAULT_DIMENSION = 9;
+const MIN_DIMENSION = 3;
+const MAX_DIMENSION = 15;
+
 function App() {
+  const [rowsInput, setRowsInput] = useState(String(DEFAULT_DIMENSION));
+  const [colsInput, setColsInput] = useState(String(DEFAULT_DIMENSION));
+  const [dimensionError, setDimensionError] = useState<string | null>(null);
   const puzzle = useCrosswordStore((state) => state.puzzle);
   const filled = useCrosswordStore((state) => state.filled);
   const selectedCell = useCrosswordStore((state) => state.selectedCell);
@@ -19,8 +26,34 @@ function App() {
   const clearAnswers = useCrosswordStore((state) => state.clearAnswers);
 
   useEffect(() => {
-    if (status === "idle") generate(20260930);
+    if (status === "idle") {
+      generate(20260930, {
+        rows: DEFAULT_DIMENSION,
+        cols: DEFAULT_DIMENSION,
+      });
+    }
   }, [generate, status]);
+
+  function generateWithDimensions() {
+    const rows = Number(rowsInput);
+    const cols = Number(colsInput);
+    if (
+      !Number.isInteger(rows) ||
+      !Number.isInteger(cols) ||
+      rows < MIN_DIMENSION ||
+      rows > MAX_DIMENSION ||
+      cols < MIN_DIMENSION ||
+      cols > MAX_DIMENSION
+    ) {
+      setDimensionError(
+        `Choose dimensions from ${MIN_DIMENSION} to ${MAX_DIMENSION}.`,
+      );
+      return;
+    }
+
+    setDimensionError(null);
+    generate(undefined, { rows, cols });
+  }
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -100,7 +133,7 @@ function App() {
         <button
           className="button button--quiet topbar-action"
           type="button"
-          onClick={() => generate()}
+          onClick={generateWithDimensions}
         >
           New puzzle <span aria-hidden="true">+</span>
         </button>
@@ -108,11 +141,57 @@ function App() {
 
       <main id="top" className="main-content">
         <section className="page-heading">
-          <p className="eyebrow">DAILY CONSTRUCTION / 09 x 09</p>
+          <p className="eyebrow">
+            DAILY CONSTRUCTION / {puzzle?.rows ?? DEFAULT_DIMENSION} x{" "}
+            {puzzle?.cols ?? DEFAULT_DIMENSION}
+          </p>
           <h1>
             Crossword <span>No. 01</span>
           </h1>
         </section>
+
+        <form
+          className="dimension-controls"
+          onSubmit={(event) => {
+            event.preventDefault();
+            generateWithDimensions();
+          }}
+        >
+          <label className="dimension-field" htmlFor="grid-rows">
+            Rows
+            <input
+              id="grid-rows"
+              type="number"
+              min={MIN_DIMENSION}
+              max={MAX_DIMENSION}
+              step="1"
+              required
+              value={rowsInput}
+              onChange={(event) => setRowsInput(event.currentTarget.value)}
+            />
+          </label>
+          <label className="dimension-field" htmlFor="grid-cols">
+            Columns
+            <input
+              id="grid-cols"
+              type="number"
+              min={MIN_DIMENSION}
+              max={MAX_DIMENSION}
+              step="1"
+              required
+              value={colsInput}
+              onChange={(event) => setColsInput(event.currentTarget.value)}
+            />
+          </label>
+          <button className="button button--primary" type="submit">
+            Apply dimensions
+          </button>
+        </form>
+        {dimensionError && (
+          <p className="error-banner dimension-error" role="alert">
+            {dimensionError}
+          </p>
+        )}
 
         {error && (
           <p className="error-banner" role="alert">
@@ -132,9 +211,12 @@ function App() {
               <div
                 className="crossword-grid"
                 role="grid"
-                aria-label={`${puzzle.size} by ${puzzle.size} crossword`}
+                aria-label={`${puzzle.rows} by ${puzzle.cols} crossword`}
                 style={{
-                  gridTemplateColumns: `repeat(${puzzle.size}, minmax(0, 1fr))`,
+                  gridTemplateColumns: `repeat(${puzzle.cols}, minmax(0, 1fr))`,
+                  gridTemplateRows: `repeat(${puzzle.rows}, minmax(0, 1fr))`,
+                  aspectRatio: `${puzzle.cols} / ${puzzle.rows}`,
+                  width: `min(100%, 560px, ${640 * (puzzle.cols / puzzle.rows)}px)`,
                 }}
               >
                 {puzzle.cells.map((row, rowIndex) =>
@@ -202,7 +284,7 @@ function App() {
                   <button
                     className="button button--primary"
                     type="button"
-                    onClick={() => generate()}
+                    onClick={generateWithDimensions}
                   >
                     New puzzle <span aria-hidden="true">+</span>
                   </button>

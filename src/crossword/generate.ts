@@ -5,6 +5,7 @@ import type {
   CrosswordPuzzle,
   Direction,
   GenerationResult,
+  GridDimensions,
 } from "./types";
 
 interface PreparedClue extends ClueRecord {
@@ -25,7 +26,7 @@ interface Placement {
   col: number;
 }
 
-interface GeneratorOptions {
+interface GeneratorOptions extends Partial<GridDimensions> {
   size?: number;
   targetEntries?: number;
   nodeLimit?: number;
@@ -35,7 +36,10 @@ const DEFAULT_SIZE = 9;
 const DEFAULT_TARGET = 7;
 const DEFAULT_NODE_LIMIT = 12000;
 
-export function normalizeClues(records: ClueRecord[]): PreparedClue[] {
+export function normalizeClues(
+  records: ClueRecord[],
+  maxAnswerLength = DEFAULT_SIZE,
+): PreparedClue[] {
   const answers = new Set<string>();
   const clues: PreparedClue[] = [];
 
@@ -43,7 +47,7 @@ export function normalizeClues(records: ClueRecord[]): PreparedClue[] {
     const answer = record.answer.toUpperCase().replace(/[^A-Z]/g, "");
     if (
       answer.length < 3 ||
-      answer.length > 9 ||
+      answer.length > maxAnswerLength ||
       !record.clue.trim() ||
       answers.has(answer)
     ) {
@@ -66,16 +70,20 @@ export function generateCrossword(
   seed = Date.now(),
   options: GeneratorOptions = {},
 ): GenerationResult {
-  const size = options.size ?? DEFAULT_SIZE;
+  const rows = options.rows ?? options.size ?? DEFAULT_SIZE;
+  const cols = options.cols ?? options.size ?? DEFAULT_SIZE;
   const targetEntries = options.targetEntries ?? DEFAULT_TARGET;
   const nodeLimit = options.nodeLimit ?? DEFAULT_NODE_LIMIT;
-  const clues = normalizeClues(records).filter(
-    ({ answer }) => answer.length <= size,
+  const clues = normalizeClues(records, Math.max(rows, cols)).filter(
+    ({ answer }) => answer.length <= Math.max(rows, cols),
   );
   const minimumPerDirection = Math.floor(targetEntries / 2);
 
   if (
-    size < 3 ||
+    !Number.isInteger(rows) ||
+    !Number.isInteger(cols) ||
+    rows < 3 ||
+    cols < 3 ||
     targetEntries < 2 ||
     clues.length < minimumPerDirection * 2
   ) {
@@ -98,14 +106,15 @@ export function generateCrossword(
 
   for (const firstClue of candidates) {
     if (visited >= searchLimit) break;
+    if (firstClue.answer.length > cols) continue;
 
     const firstPlacement: Placement = {
       clue: firstClue,
       direction: "across",
-      row: Math.floor(size / 2),
-      col: Math.floor((size - firstClue.answer.length) / 2),
+      row: Math.floor(rows / 2),
+      col: Math.floor((cols - firstClue.answer.length) / 2),
     };
-    const board = createBoard(size);
+    const board = createBoard(rows, cols);
     placeOnBoard(board, firstPlacement);
 
     const placements = [firstPlacement];
@@ -130,7 +139,10 @@ export function generateCrossword(
         ) {
           bestPlacements = [...placements];
           bestCellCount = currentCellCount;
-          if (placements.length === targetEntries && searchLimit === nodeLimit) {
+          if (
+            placements.length === targetEntries &&
+            searchLimit === nodeLimit
+          ) {
             searchLimit = Math.min(
               nodeLimit,
               visited + Math.max(1, Math.floor(nodeLimit / 8)),
@@ -140,10 +152,7 @@ export function generateCrossword(
       }
 
       if (placements.length >= targetEntries || visited >= searchLimit) return;
-      if (
-        bestPlacements !== null &&
-        bestPlacements.length === targetEntries
-      ) {
+      if (bestPlacements !== null && bestPlacements.length === targetEntries) {
         const neededEntries = targetEntries - placements.length;
         let possibleAdditionalCells = 0;
         let availableEntries = 0;
@@ -176,7 +185,9 @@ export function generateCrossword(
         const possible: Placement[] = [];
 
         for (const clue of remaining) {
-          possible.push(...findPlacements(currentBoard, clue, direction, size));
+          possible.push(
+            ...findPlacements(currentBoard, clue, direction, rows, cols),
+          );
         }
 
         for (const placement of possible) {
@@ -187,7 +198,11 @@ export function generateCrossword(
           let addedCellCount = 0;
           const rowStep = placement.direction === "down" ? 1 : 0;
           const colStep = placement.direction === "across" ? 1 : 0;
-          for (let index = 0; index < placement.clue.answer.length; index += 1) {
+          for (
+            let index = 0;
+            index < placement.clue.answer.length;
+            index += 1
+          ) {
             if (
               currentBoard[placement.row + rowStep * index][
                 placement.col + colStep * index
@@ -215,19 +230,19 @@ export function generateCrossword(
   if (bestPlacements !== null) {
     return {
       ok: true,
-      puzzle: buildPuzzle(size, normalizedSeed, bestPlacements),
+      puzzle: buildPuzzle(rows, cols, normalizedSeed, bestPlacements),
     };
   }
 
   return {
     ok: false,
-    reason: `Could not fit enough crossing clues into a ${size}×${size} grid.`,
+    reason: `Could not fit enough crossing clues into a ${rows}×${cols} grid.`,
   };
 }
 
-function createBoard(size: number): BoardCell[][] {
-  return Array.from({ length: size }, () =>
-    Array.from({ length: size }, () => ({
+function createBoard(rows: number, cols: number): BoardCell[][] {
+  return Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => ({
       letter: null,
       across: false,
       down: false,
@@ -243,13 +258,14 @@ function findPlacements(
   board: BoardCell[][],
   clue: PreparedClue,
   direction: Direction,
-  size: number,
+  rows: number,
+  cols: number,
 ): Placement[] {
   const options: Placement[] = [];
   const seen = new Set<string>();
 
-  for (let row = 0; row < size; row += 1) {
-    for (let col = 0; col < size; col += 1) {
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
       const existingCell = board[row][col];
       if (existingCell.letter === null) continue;
 
@@ -263,7 +279,7 @@ function findPlacements(
         seen.add(key);
 
         const placement = { clue, direction, row: startRow, col: startCol };
-        if (canPlace(board, placement, size)) options.push(placement);
+        if (canPlace(board, placement, rows, cols)) options.push(placement);
       }
     }
   }
@@ -274,7 +290,8 @@ function findPlacements(
 function canPlace(
   board: BoardCell[][],
   placement: Placement,
-  size: number,
+  rows: number,
+  cols: number,
 ): boolean {
   const { answer } = placement.clue;
   const { direction, row, col } = placement;
@@ -286,8 +303,8 @@ function canPlace(
   const afterCol = col + colStep * answer.length;
 
   if (
-    isOccupied(board, beforeRow, beforeCol, size) ||
-    isOccupied(board, afterRow, afterCol, size)
+    isOccupied(board, beforeRow, beforeCol, rows, cols) ||
+    isOccupied(board, afterRow, afterCol, rows, cols)
   ) {
     return false;
   }
@@ -298,9 +315,9 @@ function canPlace(
     const currentCol = col + colStep * index;
     if (
       currentRow < 0 ||
-      currentRow >= size ||
+      currentRow >= rows ||
       currentCol < 0 ||
-      currentCol >= size
+      currentCol >= cols
     )
       return false;
 
@@ -327,7 +344,7 @@ function canPlace(
             ];
       if (
         perpendicularNeighbors.some(([neighborRow, neighborCol]) =>
-          isOccupied(board, neighborRow, neighborCol, size),
+          isOccupied(board, neighborRow, neighborCol, rows, cols),
         )
       ) {
         return false;
@@ -342,13 +359,14 @@ function isOccupied(
   board: BoardCell[][],
   row: number,
   col: number,
-  size: number,
+  rows: number,
+  cols: number,
 ): boolean {
   return (
     row >= 0 &&
-    row < size &&
+    row < rows &&
     col >= 0 &&
-    col < size &&
+    col < cols &&
     board[row][col].letter !== null
   );
 }
@@ -365,7 +383,8 @@ function placeOnBoard(board: BoardCell[][], placement: Placement): void {
 }
 
 function buildPuzzle(
-  size: number,
+  rows: number,
+  cols: number,
   seed: number,
   placements: Placement[],
 ): CrosswordPuzzle {
@@ -378,8 +397,8 @@ function buildPuzzle(
     if (!starts.has(key)) starts.set(key, starts.size + 1);
   }
 
-  const cells: CrosswordCell[][] = Array.from({ length: size }, () =>
-    Array.from({ length: size }, () => ({ solution: null as string | null })),
+  const cells: CrosswordCell[][] = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => ({ solution: null as string | null })),
   );
   const entries: CrosswordEntry[] = placements.map((placement) => {
     const id = placement.clue.id;
@@ -405,7 +424,7 @@ function buildPuzzle(
     };
   });
 
-  return { size, seed, cells, entries };
+  return { rows, cols, seed, cells, entries };
 }
 
 function createRandom(seed: number): () => number {

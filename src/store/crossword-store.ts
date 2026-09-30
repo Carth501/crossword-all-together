@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import { generateCrossword } from "../crossword/generate";
-import type { CrosswordPuzzle, Direction } from "../crossword/types";
+import type {
+  CrosswordPuzzle,
+  Direction,
+  GridDimensions,
+} from "../crossword/types";
 import { clueRecords } from "../data/clues";
 
 export interface CellPosition {
@@ -17,7 +21,7 @@ interface CrosswordState {
   direction: Direction;
   status: PuzzleStatus;
   error: string | null;
-  generate: (seed?: number) => void;
+  generate: (seed?: number, dimensions?: GridDimensions) => void;
   selectCell: (position: CellPosition) => void;
   selectEntry: (entryId: string) => void;
   setDirection: (direction: Direction) => void;
@@ -51,7 +55,7 @@ function nextCell(
   let row = position.row + rowDelta;
   let col = position.col + colDelta;
 
-  while (row >= 0 && row < puzzle.size && col >= 0 && col < puzzle.size) {
+  while (row >= 0 && row < puzzle.rows && col >= 0 && col < puzzle.cols) {
     if (
       puzzle.cells[row][col].solution !== null &&
       entryAt(puzzle, { row, col }, direction)
@@ -85,8 +89,11 @@ export const useCrosswordStore = create<CrosswordState>((set, get) => ({
   direction: "across",
   status: "idle",
   error: null,
-  generate: (seed = Math.floor(Math.random() * 0xffffffff)) => {
-    const result = generateCrossword(clueRecords, seed);
+  generate: (
+    seed = Math.floor(Math.random() * 0xffffffff),
+    dimensions = { rows: 9, cols: 9 },
+  ) => {
+    const result = generateCrossword(clueRecords, seed, dimensions);
     if (!result.ok) {
       set({
         puzzle: null,
@@ -166,7 +173,7 @@ export const useCrosswordStore = create<CrosswordState>((set, get) => ({
     const colStep = colDelta === 0 ? 0 : step;
     let row = selectedCell.row + rowStep;
     let col = selectedCell.col + colStep;
-    while (row >= 0 && row < puzzle.size && col >= 0 && col < puzzle.size) {
+    while (row >= 0 && row < puzzle.rows && col >= 0 && col < puzzle.cols) {
       if (puzzle.cells[row][col].solution !== null) {
         const resolvedDirection = entryAt(puzzle, { row, col }, direction)
           ? direction

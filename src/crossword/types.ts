@@ -25,8 +25,12 @@ export interface CrosswordCell {
   downEntryId?: string;
 }
 
-export interface CrosswordPuzzle {
-  size: number;
+export interface GridDimensions {
+  rows: number;
+  cols: number;
+}
+
+export interface CrosswordPuzzle extends GridDimensions {
   seed: number;
   cells: CrosswordCell[][];
   entries: CrosswordEntry[];
